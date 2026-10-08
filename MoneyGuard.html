@@ -343,6 +343,7 @@ html[data-theme="dark"] #splash .spBars{fill:#E8B84B}
 
 <!-- ========== RATY ========== -->
 <section id="tab-loans" class="tab">
+  <div id="lFilter"></div>
   <div class="card hero">
     <div class="lbl" id="lLbl">Pozostało do spłaty</div>
     <div class="big" id="lTotal">0 zł</div>
@@ -439,7 +440,7 @@ html[data-theme="dark"] #splash .spBars{fill:#E8B84B}
 
 <script>
 'use strict';
-const APP_VER='2026-10-08h';
+const APP_VER='2026-10-08i';
 const KEY='moneyGuard.v1';
 const SYNC_KEY='moneyGuard.sync';
 const MN=['styczeń','luty','marzec','kwiecień','maj','czerwiec','lipiec','sierpień','wrzesień','październik','listopad','grudzień'];
@@ -688,21 +689,33 @@ $('#fxAdd').onclick=()=>openFixed(null);
 $('#fxAddLoan').onclick=()=>openLoan(null);
 
 /* ---------- raty ---------- */
+const LKP={kredyt:'Kredyty',leasing:'Leasingi',raty:'Raty',pozyczka:'Pożyczki'};
 function renderLoans(){
-  const sc=S.settings.scope,all=S.loans.filter(L=>inScope(L.s,sc)).map(L=>({L,c:loanCalc(L)}));
+  const sc=S.settings.scope,base=S.loans.filter(L=>inScope(L.s,sc)),cnt={};
+  base.forEach(L=>{const k=LKIND[L.kind]?L.kind:'kredyt';cnt[k]=(cnt[k]||0)+1});
+  const kinds=Object.keys(LKIND).filter(k=>cnt[k]);
+  let kf=S.settings.loanKind||'all';if(kf!=='all'&&!cnt[kf])kf='all';
+  $('#lFilter').innerHTML=kinds.length>1?`<div class="chips"><button data-lk="all" class="${kf==='all'?'sel':''}">Wszystkie · ${base.length}</button>${kinds.map(k=>`<button data-lk="${k}" class="${kf===k?'sel':''}">${LKIND[k][1]} ${LKP[k]} · ${cnt[k]}</button>`).join('')}</div>`:'';
+  $$('#lFilter [data-lk]').forEach(b=>b.onclick=()=>{S.settings.loanKind=b.dataset.lk;saveLocal();renderLoans()});
+  const kindOf=L=>LKIND[L.kind]?L.kind:'kredyt';
+  const all=base.filter(L=>kf==='all'||kindOf(L)===kf).map(L=>({L,c:loanCalc(L)}));
   const act=all.filter(x=>x.c.rem>0).sort((a,b)=>a.c.e-b.c.e),end=all.filter(x=>x.c.rem===0);
   const sum=(a,f)=>a.reduce((s,x)=>s+f(x),0);
   const rem=sum(act,x=>x.c.bal),tot=sum(act,x=>x.c.P),mon=sum(act,x=>x.c.A);
-  $('#lLbl').textContent='Kapitał do spłaty — '+SC[sc].toLowerCase();
+  $('#lLbl').textContent='Kapitał do spłaty — '+SC[sc].toLowerCase()+(kf!=='all'?' · '+LKP[kf].toLowerCase():'');
   $('#lTotal').textContent=zl(rem);
   $('#lSub').textContent=act.length?`${act.length} ${plural(act.length,'aktywne zobowiązanie','aktywne zobowiązania','aktywnych zobowiązań')} · raty ${zl(mon)} / mies.`:'brak aktywnych zobowiązań';
   const ne=act[0];
   $('#lKpi').innerHTML=kpi('Spłacono',tot?Math.round((tot-rem)/tot*100)+'%':'—')+kpi('Do zapłaty',zl0(sum(act,x=>x.c.remPay)))+kpi('Odsetki',zl0(sum(act,x=>x.c.interest)))+
     kpi('Koniec',ne?mShort(im(ne.c.e)):'—')+kpi('Raty dom',zl0(sum(act.filter(x=>x.L.s==='P'),x=>x.c.A)))+kpi('Raty firma',zl0(sum(act.filter(x=>x.L.s==='F'),x=>x.c.A)));
   $('#lChart').style.display=act.length?'':'none';
-  if(act.length)$('#lChart').innerHTML=`<h3><span class="dot" style="background:var(--amber)"></span>Raty w kolejnych 24 miesiącach</h3>`+futureSVG(sc)+`<p class="hint-inline">Stuknij słupek — zobaczysz, które raty składają się na miesiąc. Spadek = koniec umowy i wolne środki.</p>`;
-  $('#lList').innerHTML=(act.length?'':`<div class="card empty" style="margin-top:12px"><div class="big">🏦</div>Dodaj kredyt, leasing lub raty — policzę ratę, ile zostało do spłaty i procent spłaty.</div>`)+
-    act.map(loanCard).join('')+(end.length?`<div class="sec"><span>Zakończone / spłacone</span><small>${end.length}</small></div>`+end.map(loanCard).join(''):'');
+  if(act.length)$('#lChart').innerHTML=`<h3><span class="dot" style="background:var(--amber)"></span>Raty w kolejnych 24 miesiącach</h3>`+futureSVG(sc,kf)+`<p class="hint-inline">Stuknij słupek — zobaczysz, które raty składają się na miesiąc. Spadek = koniec umowy i wolne środki.</p>`;
+  let list='';
+  if(kf==='all'&&kinds.length>1)kinds.forEach(k=>{const g=act.filter(x=>kindOf(x.L)===k);if(!g.length)return;
+    list+=`<div class="sec"><span>${LKIND[k][1]} ${LKP[k]}</span><small>${zl0(sum(g,x=>x.c.A))} / mies. · kapitał ${zl0(sum(g,x=>x.c.bal))}</small></div>`+g.map(loanCard).join('')});
+  else list=act.map(loanCard).join('');
+  $('#lList').innerHTML=(act.length?'':`<div class="card empty" style="margin-top:12px"><div class="big">🏦</div>${base.length?'Brak aktywnych zobowiązań w tym widoku.':'Dodaj kredyt, leasing lub raty — policzę ratę, ile zostało do spłaty i procent spłaty.'}</div>`)+
+    list+(end.length?`<div class="sec"><span>Zakończone / spłacone</span><small>${end.length}</small></div>`+end.map(loanCard).join(''):'');
 }
 function loanCard({L,c}){
   const K=LKIND[L.kind]||LKIND.kredyt,ml=c.rem,y=Math.floor(ml/12),mm=ml%12;
@@ -751,10 +764,10 @@ function trendSVG(data){
   const dots=pts.map(p=>`<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="var(--ink)" stroke="var(--panel)" stroke-width="2"/>`).join('');
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Koszty i przychody w ostatnich miesiącach">${cols}${g}${bars}${line}${dots}${hits}</svg>`;
 }
-function futureSVG(sc){
+function futureSVG(sc,kf){
   const start=ym(today()),data=[];
   for(let i=0;i<24;i++){const m=shiftM(start,i),items=[];
-    S.loans.filter(L=>inScope(L.s,sc)&&loanInMonth(L,m)&&!(L.done)).forEach(L=>{const c=loanCalc(L);items.push([L.name,c.A+(mi(m)===c.e?c.RV:0),mi(m)===c.e])});
+    S.loans.filter(L=>inScope(L.s,sc)&&(!kf||kf==='all'||(LKIND[L.kind]?L.kind:'kredyt')===kf)&&loanInMonth(L,m)&&!(L.done)).forEach(L=>{const c=loanCalc(L);items.push([L.name,c.A+(mi(m)===c.e?c.RV:0),mi(m)===c.e])});
     data.push({m,v:items.reduce((a,x)=>a+x[1],0),items})}
   const W=340,H=170,pl=34,pr=6,pt=8,pb=22,pw=W-pl-pr,ph=H-pt-pb,mx=niceMax(Math.max(1,...data.map(d=>d.v))),cw=pw/24,bw=cw*.62;
   let g=axes(W,H,pl,pr,pt,pb,mx),bars='',cols='',hits='';TIPS.fu=[];
@@ -1008,7 +1021,7 @@ function openFixed(f){
 /* ---------- modal: zobowiązanie ---------- */
 function dmyHTML(id,val){
   const [y,m,d]=val?val.split('-').map(Number):[0,0,0],cy=new Date().getFullYear(),ys=[];
-  for(let i=cy-35;i<=cy+40;i++)ys.push(i);if(y&&!ys.includes(y))ys.push(y);ys.sort((a,b)=>a-b);
+  for(let i=2023;i<=cy+35;i++)ys.push(i);if(y&&!ys.includes(y))ys.push(y);ys.sort((a,b)=>a-b);
   const o=(v,l,s)=>`<option value="${v}" ${s?'selected':''}>${l}</option>`;
   return `<div class="dmy" id="${id}"><select data-p="d" aria-label="Dzień">${o('','dzień',!d)}${[...Array(31)].map((_,i)=>o(i+1,i+1,d===i+1)).join('')}</select>`+
     `<select data-p="m" aria-label="Miesiąc">${o('','miesiąc',!m)}${MN.map((x,i)=>o(i+1,x,m===i+1)).join('')}</select>`+
