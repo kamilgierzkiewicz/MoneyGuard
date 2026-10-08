@@ -5,7 +5,7 @@ Koszty stałe (osobiste i firmowe), raty i leasingi, wydatki bieżące z kategor
 ## Wgranie (GitHub Pages)
 1. Nowe publiczne repo `moneyguard` → wgraj wszystkie pliki z tego folderu (bez podfolderu).
 2. Settings → Pages → Deploy from a branch → `main`, `/ (root)`.
-3. Adres: `https://TWÓJLOGIN.github.io/moneyguard/`
+3. Adres: `https://TWÓJLOGIN.github.io/moneyguard/MoneyGuard.html`
 4. iPhone: Safari → Udostępnij → Do ekranu początkowego. Android: Chrome → ⋮ → Zainstaluj aplikację.
 
 ## Synchronizacja telefon ↔ MacBook
@@ -17,4 +17,4 @@ Koszty stałe (osobiste i firmowe), raty i leasingi, wydatki bieżące z kategor
 Ustawienia → Asystent AI → klucz z platform.claude.com/settings/keys (zostaje tylko w urządzeniu).
 
 ## Aktualizacje
-Podmieniasz `index.html` i `sw.js`. Dane zostają.
+Podmieniasz `MoneyGuard.html` i `sw.js`. Dane zostają.
