@@ -439,7 +439,7 @@ html[data-theme="dark"] #splash .spBars{fill:#E8B84B}
 
 <script>
 'use strict';
-const APP_VER='2026-10-08g';
+const APP_VER='2026-10-08h';
 const KEY='moneyGuard.v1';
 const SYNC_KEY='moneyGuard.sync';
 const MN=['styczeń','luty','marzec','kwiecień','maj','czerwiec','lipiec','sierpień','wrzesień','październik','listopad','grudzień'];
@@ -518,26 +518,29 @@ function loanSpan(L){const N=Math.max(1,Math.round(n(L.n))||1),e=mi((L.end||toda
 function loanInMonth(L,m){const {s,e}=loanSpan(L),x=mi(m);if(x<s||x>e)return false;if(L.done&&L.doneAt&&x>=mi(L.doneAt))return false;return true}
 const dueDate=(i,day)=>{const k=im(i);return k+'-'+pad(Math.min(day,dimK(k)))};
 function remAfter(L,ref){const {N,s,e}=loanSpan(L),eDay=+((L.end||'').slice(8,10))||1,x=mi(ref.slice(0,7)),rDay=+ref.slice(8,10);let r;if(x<s)r=N;else if(x>e)r=0;else{r=e-x;if(Math.min(eDay,dimK(im(x)))>rDay)r++}return Math.max(0,Math.min(N,r))}
+function annuity(P,r,N,RV){if(N<=0)return 0;return r===0?(P-RV)/N:(P-RV/Math.pow(1+r,N))*r/(1-Math.pow(1+r,-N))}
+function balAfter(P,r,A,j){return r===0?P-j*A:P*Math.pow(1+r,j)-A*(Math.pow(1+r,j)-1)/r}
+/* % spłaty = spłacony kapitał / kwota umowy (tak jak bank). Raty z opłatami służą tylko do budżetu, nie do kapitału. */
 function loanCalc(L,ref){
   ref=ref||today();
-  const price=n(L.price),down=n(L.down),RV=n(L.rv),P=Math.max(0,price-down),{N,s,e}=loanSpan(L),r=n(L.rate)/1200,eDay=+((L.end||'').slice(8,10))||1;
-  const owed=n(L.owed),hasOwed=owed>0&&!!L.owedAt;
-  let Aa=0;
-  if(price>0)Aa=r===0?(P-RV)/N:(P-RV/Math.pow(1+r,N))*r/(1-Math.pow(1+r,-N));
-  else if(hasOwed){const ra=remAfter(L,L.owedAt);Aa=ra>0?(owed-RV)/ra:0}
+  const price=n(L.price),down=n(L.down),RV=n(L.rv),{N,s,e}=loanSpan(L),r=n(L.rate)/1200,eDay=+((L.end||'').slice(8,10))||1;
+  const owed=n(L.owed),hasOwed=owed>0&&!!L.owedAt,rem=L.done?0:remAfter(L,ref),k=N-rem;
+  let P=Math.max(0,price-down),pEst=false,Aa,bal;
+  if(hasOwed){
+    const rO=remAfter(L,L.owedAt),Ao=Math.max(0,annuity(owed,r,rO,RV));
+    bal=rem>0?Math.max(0,balAfter(owed,r,Ao,Math.max(0,rO-rem))):0;
+    if(!(price>0)){pEst=true;P=Math.max(owed,r===0?Ao*N+RV:Ao*(1-Math.pow(1+r,-N))/r+RV/Math.pow(1+r,N))}
+    Aa=price>0?annuity(P,r,N,RV):Ao;
+  }else{
+    Aa=annuity(P,r,N,RV);
+    bal=rem>0?Math.max(0,balAfter(P,r,Aa,k)):0;
+  }
   Aa=Math.max(0,r2(Aa));
-  const A=n(L.inst)>0?n(L.inst):Aa,rem=L.done?0:remAfter(L,ref),k=N-rem;
-  let remAmt=rem>0?rem*A+RV:0,bal=null,interest=null;
-  if(hasOwed&&rem>0)remAmt=Math.max(0,owed-Math.max(0,remAfter(L,L.owedAt)-rem)*A);
-  if(price>0){
-    bal=rem>0?(r===0?Math.max(0,P-k*A):Math.max(0,P*Math.pow(1+r,k)-A*(Math.pow(1+r,k)-1)/r)):0;
-    if(hasOwed)bal=Math.min(bal,remAmt);
-    interest=Math.max(0,N*A+RV-P);
-  }else if(rem===0)bal=0;
-  const total=Math.max(price>0?N*A+RV:0,remAmt+k*A);
-  const pct=L.done?100:total>0?Math.max(0,Math.min(100,(total-remAmt)/total*100)):100;
-  return {A,Aa,P,N,RV,r,k,rem,remAmt:r2(remAmt),pct,bal:bal==null?null:r2(bal),interest:interest==null?null:r2(interest),total:r2(total),s,e,eDay,
-    hasOwed,owedAt:L.owedAt,first:dueDate(s,eDay),next:rem>0?dueDate(e-rem+1,eDay):null};
+  if(L.done)bal=0;
+  const A=n(L.inst)>0?n(L.inst):Aa,remPay=rem>0?rem*A+RV:0;
+  const pct=L.done?100:P>0?Math.max(0,Math.min(100,(P-bal)/P*100)):(N?k/N*100:100);
+  return {A,Aa,P,pEst,N,RV,r,k,rem,bal:r2(bal),capPaid:r2(Math.max(0,P-bal)),remPay:r2(remPay),pct,interest:r2(Math.max(0,N*A+RV-P)),total:r2(N*A+RV),s,e,eDay,
+    hasOwed,owedAt:L.owedAt,owedHigh:hasOwed&&price>0&&owed>P+.01,first:dueDate(s,eDay),next:rem>0?dueDate(e-rem+1,eDay):null};
 }
 function obligations(m,sc){
   const out=[];
@@ -689,13 +692,13 @@ function renderLoans(){
   const sc=S.settings.scope,all=S.loans.filter(L=>inScope(L.s,sc)).map(L=>({L,c:loanCalc(L)}));
   const act=all.filter(x=>x.c.rem>0).sort((a,b)=>a.c.e-b.c.e),end=all.filter(x=>x.c.rem===0);
   const sum=(a,f)=>a.reduce((s,x)=>s+f(x),0);
-  const rem=sum(act,x=>x.c.remAmt),tot=sum(act,x=>x.c.total),mon=sum(act,x=>x.c.A);
-  $('#lLbl').textContent='Pozostało do spłaty — '+SC[sc].toLowerCase();
+  const rem=sum(act,x=>x.c.bal),tot=sum(act,x=>x.c.P),mon=sum(act,x=>x.c.A);
+  $('#lLbl').textContent='Kapitał do spłaty — '+SC[sc].toLowerCase();
   $('#lTotal').textContent=zl(rem);
   $('#lSub').textContent=act.length?`${act.length} ${plural(act.length,'aktywne zobowiązanie','aktywne zobowiązania','aktywnych zobowiązań')} · raty ${zl(mon)} / mies.`:'brak aktywnych zobowiązań';
   const ne=act[0];
-  $('#lKpi').innerHTML=kpi('Spłacono',tot?Math.round((tot-rem)/tot*100)+'%':'—')+kpi('Kapitał',zl0(sum(act,x=>x.c.bal||0)))+kpi('Odsetki',zl0(sum(act,x=>x.c.interest||0)))+
-    kpi('Najbl. koniec',ne?mShort(im(ne.c.e)):'—')+kpi('Raty dom',zl0(sum(act.filter(x=>x.L.s==='P'),x=>x.c.A)))+kpi('Raty firma',zl0(sum(act.filter(x=>x.L.s==='F'),x=>x.c.A)));
+  $('#lKpi').innerHTML=kpi('Spłacono',tot?Math.round((tot-rem)/tot*100)+'%':'—')+kpi('Do zapłaty',zl0(sum(act,x=>x.c.remPay)))+kpi('Odsetki',zl0(sum(act,x=>x.c.interest)))+
+    kpi('Koniec',ne?mShort(im(ne.c.e)):'—')+kpi('Raty dom',zl0(sum(act.filter(x=>x.L.s==='P'),x=>x.c.A)))+kpi('Raty firma',zl0(sum(act.filter(x=>x.L.s==='F'),x=>x.c.A)));
   $('#lChart').style.display=act.length?'':'none';
   if(act.length)$('#lChart').innerHTML=`<h3><span class="dot" style="background:var(--amber)"></span>Raty w kolejnych 24 miesiącach</h3>`+futureSVG(sc)+`<p class="hint-inline">Stuknij słupek — zobaczysz, które raty składają się na miesiąc. Spadek = koniec umowy i wolne środki.</p>`;
   $('#lList').innerHTML=(act.length?'':`<div class="card empty" style="margin-top:12px"><div class="big">🏦</div>Dodaj kredyt, leasing lub raty — policzę ratę, ile zostało do spłaty i procent spłaty.</div>`)+
@@ -708,13 +711,13 @@ function loanCard({L,c}){
     <h3>${K[1]} ${esc(L.name)}<span class="r">${esc(L.bank||'')}</span></h3>
     <div><span class="tag">${K[0]}</span>${scTag(L.s)}<span class="tag">${f1(n(L.rate))}%</span>${L.done?'<span class="tag g">spłacony</span>':''}</div>
     <div class="pbar"><i style="width:${Math.min(100,c.pct)}%"></i></div>
-    <div class="pcap"><span>${c.k}/${c.N} rat · ${f1(Math.round(c.pct*10)/10)}% spłacone</span><span>koniec ${dPL(L.end)}</span></div>
+    <div class="pcap"><span>${c.k}/${c.N} rat · ${f1(Math.round(c.pct*10)/10)}% kapitału spłacone</span><span>koniec ${dPL(L.end)}</span></div>
     <div class="row" style="margin-top:6px"><span class="k">Rata miesięczna</span><span class="v">${zl(c.A)}</span></div>
-    <div class="row"><span class="k">Spłacono (${c.k} ${plural(c.k,'rata','raty','rat')})</span><span class="v ok">${zl(c.total-c.remAmt)}</span></div>
-    <div class="row"><span class="k">Pozostało do spłaty${c.hasOwed?` <span class="tag">wg stanu z ${dPL(c.owedAt).slice(0,5)}</span>`:''}</span><span class="v amb">${zl(c.remAmt)}</span></div>
-    ${c.bal!=null?`<div class="row"><span class="k">Kapitał pozostały ≈</span><span class="v">${zl(c.bal)}</span></div>`:''}
+    <div class="row"><span class="k">Spłacony kapitał</span><span class="v ok">${zl(c.capPaid)}</span></div>
+    <div class="row"><span class="k">Kapitał do spłaty${c.hasOwed?` <span class="tag">wg banku z ${dPL(c.owedAt).slice(0,5)}</span>`:' ≈'}</span><span class="v amb">${zl(c.bal)}</span></div>
+    <div class="row"><span class="k">Raty do końca (${c.rem}× z odsetkami)</span><span class="v">${zl(c.remPay)}</span></div>
     ${c.RV?`<div class="row"><span class="k">Wykup / rata balonowa</span><span class="v">${zl(c.RV)}</span></div>`:''}
-    ${c.interest!=null?`<div class="row"><span class="k">Koszt odsetek i opłat</span><span class="v">${zl(c.interest)}</span></div>`:''}
+    <div class="row"><span class="k">Koszt odsetek i opłat${c.pEst?' ≈':''}</span><span class="v">${zl(c.interest)}</span></div>
     ${c.next?`<div class="row"><span class="k">Następna rata · do końca</span><span class="v">${dPL(c.next)} · ${left}</span></div>`:''}
   </div>`;
 }
@@ -879,7 +882,7 @@ function aiContext(){
   const fx=S.fixed.filter(f=>inScope(f.s,sc)&&fixedNext(f,curM));
   if(fx.length)t+=`\nOpłaty stałe:\n`+fx.map(f=>`- ${f.name} (${f.cat}${sc==='ALL'?', '+(f.s==='F'?'firma':'dom'):''}): ${n(f.amt)} zł ${FREQ.find(x=>x[0]===(f.freq||1))[1]}`).join('\n')+'\n';
   const act=S.loans.filter(L=>inScope(L.s,sc)).map(L=>({L,c:loanCalc(L)})).filter(x=>x.c.rem>0);
-  if(act.length)t+=`\nZobowiązania aktywne:\n`+act.map(({L,c})=>`- ${L.name} (${(LKIND[L.kind]||LKIND.kredyt)[0]}, ${L.bank||'—'}${sc==='ALL'?', '+(L.s==='F'?'firma':'dom'):''}): rata ${r2(c.A)} zł, oprocentowanie ${n(L.rate)}%, spłacono ${c.k}/${c.N} rat (${Math.round(c.pct)}%), pozostało do spłaty ${c.remAmt} zł, ${c.bal!=null?'kapitał ok. '+Math.round(c.bal)+' zł':''}${c.hasOwed?' (stan z banku na '+dPL(c.owedAt)+')':''}${c.RV?', wykup '+c.RV+' zł':''}, koniec ${dPL(L.end)}`).join('\n')+'\n';
+  if(act.length)t+=`\nZobowiązania aktywne:\n`+act.map(({L,c})=>`- ${L.name} (${(LKIND[L.kind]||LKIND.kredyt)[0]}, ${L.bank||'—'}${sc==='ALL'?', '+(L.s==='F'?'firma':'dom'):''}): kwota umowy ${Math.round(c.P)} zł${c.pEst?' (szacunek)':''}, rata ${r2(c.A)} zł, oprocentowanie ${n(L.rate)}%, raty ${c.k}/${c.N}, spłacony kapitał ${c.capPaid} zł (${Math.round(c.pct)}%), kapitał do spłaty ${c.bal} zł${c.hasOwed?' (wg banku na '+dPL(c.owedAt)+')':''}, suma pozostałych rat ${c.remPay} zł${c.RV?', wykup '+c.RV+' zł':''}, koniec ${dPL(L.end)}`).join('\n')+'\n';
   const late=sums(curM,sc).ob.filter(o=>isLate(o,curM));
   if(late.length)t+=`\nNiezapłacone po terminie: ${late.map(o=>o.name+' '+o.amt+' zł').join('; ')}\n`;
   const big=txOf(curM,sc).slice().sort((a,b)=>n(b.amt)-n(a.amt)).slice(0,5);
@@ -1021,14 +1024,14 @@ function openLoan(L){
     `<div class="fld" style="margin-top:12px"><label class="lbl" for="xNm">Nazwa</label><input type="text" id="xNm" value="${esc(L&&L.name||'')}" placeholder="np. Leasing auta, kredyt hipoteczny"></div>`+
     `<div class="g2"><div class="fld"><label class="lbl" for="xB">Bank / leasingodawca</label><input type="text" id="xB" value="${esc(L&&L.bank||'')}" placeholder="np. PKO BP"></div><div class="fld"><span class="lbl">Zakres</span>${segHTML('xS',[['P','Dom'],['F','Firma']])}</div></div>`+
     `<div class="g2">${fi('xP','Kwota zakupu (zł)',v('price'),'0,00')}${fi('xDn','Wpłata własna (zł)',v('down'),'opcjonalnie')}</div>`+
-    `<div class="g2">${fi('xR','Oprocentowanie %',v('rate'),'np. 8,5')}${fi('xI','Rata z harmonogramu',v('inst'),'auto')}</div>`+
+    `<div class="g2">${fi('xR','Oprocentowanie %',v('rate'),'np. 8,5')}${fi('xI','Rata z opłatami',v('inst'),'auto')}</div>`+
     `<div class="owed"><span class="lbl">Stan umowy na dziś</span>
       <div class="fld"><label class="lbl" for="xPd" style="color:var(--mut)">Ile rat już spłaciłeś?</label><input type="text" inputmode="numeric" id="xPd" value="${L?loanCalc(Object.assign({},L,{done:false})).k:''}" placeholder="np. 12 (0 dla nowej umowy)"></div>
       <div class="fld"><span class="lbl" style="color:var(--mut)">Ostatnia rata (koniec umowy)</span>${dmyHTML('xE',L?L.end:'')}</div>
       <p class="hint-inline" style="margin:-4px 0 10px">Z tych dwóch danych liczę, ile rat zostało i ile już spłaciłeś.</p></div>`+
     `<details class="fld" ${L&&n(L.owed)?'open':''}><summary class="lnk" style="cursor:pointer;list-style:none">＋ Znam dokładną kwotę z banku (opcjonalnie)</summary>
-      <div class="fld" style="margin-top:8px"><label class="lbl" for="xOw">Pozostało do spłaty wg banku (zł)</label><input type="text" inputmode="decimal" id="xOw" value="${v('owed')}" placeholder="z aplikacji banku / harmonogramu">
-      <p class="hint-inline">${L&&n(L.owed)&&L.owedAt?`Stan z <b>${dPL(L.owedAt)}</b>. `:''}Zastępuje wyliczenie; kolejne raty odejmuję automatycznie. Może zastąpić kwotę zakupu (np. raty ze sklepu).</p></div></details>`+
+      <div class="fld" style="margin-top:8px"><label class="lbl" for="xOw">Kapitał do spłaty wg banku (zł)</label><input type="text" inputmode="decimal" id="xOw" value="${v('owed')}" placeholder="z aplikacji banku / harmonogramu">
+      <p class="hint-inline">${L&&n(L.owed)&&L.owedAt?`Stan z <b>${dPL(L.owedAt)}</b>. `:''}Kwota „pozostało do spłaty” z aplikacji banku — sam kapitał, bez przyszłych odsetek. Zastępuje wyliczenie; kolejne raty odejmuję automatycznie. Może zastąpić kwotę zakupu (np. raty ze sklepu).</p></div></details>`+
     `<div class="g2">${fi('xRv','Wykup / rata balonowa',v('rv'),'opcjonalnie')}<div class="fld"><label class="lbl" for="xNo">Notatka</label><input type="text" id="xNo" value="${esc(L&&L.note||'')}" placeholder="opcjonalnie"></div></div>`+
     `<div class="switch" style="margin-bottom:8px"><div class="txt">Spłacony przed terminem<small>Raty znikną od przyszłego miesiąca.</small></div><div class="sw" id="xDone"></div></div>`+
     `<div class="calc" id="xCalc"></div>`+mBtns(L?'Usuń zobowiązanie':''));
@@ -1041,13 +1044,14 @@ function openLoan(L){
     owed,owedAt:owed?(L&&n(L.owed)===owed&&L.owedAt?L.owedAt:today()):'',rv:r2(n($('#xRv').value)),inst:r2(n($('#xI').value)),note:$('#xNo').value.trim(),done:st.done}};
   function pv(){const x=read();if(!x.end||!hasPd()||N()<1||(!x.price&&!x.owed)){$('#xCalc').innerHTML='<p class="hint-inline" style="margin:4px 0">Podaj spłacone raty, datę ostatniej raty oraz kwotę zakupu <b>lub</b> kwotę do spłaty na dziś — resztę policzę.</p>';return}
     const c=loanCalc(x);$('#xI').placeholder='auto: '+f1(c.Aa);
-    $('#xCalc').innerHTML=`<div class="row"><span class="k">Rata ${n(x.inst)>0?'(z harmonogramu)':'(wyliczona)'}</span><span class="v">${zl(c.A)}</span></div>
+    $('#xCalc').innerHTML=`<div class="row"><span class="k">Rata ${n(x.inst)>0?'(z opłatami)':'(wyliczona)'}</span><span class="v">${zl(c.A)}</span></div>
       <div class="row"><span class="k">Okres</span><span class="v">${dPL(c.first)} – ${dPL(x.end)}</span></div>
       <div class="row"><span class="k">Raty</span><span class="v">${c.k} spłacone + ${c.rem} zostało = ${c.N}</span></div>
-      <div class="row"><span class="k">Spłacono</span><span class="v ok">${zl(c.total-c.remAmt)} · ${f1(Math.round(c.pct*10)/10)}%</span></div>
-      <div class="row"><span class="k">Pozostało do spłaty${c.hasOwed?' (wg stanu na dziś)':''}</span><span class="v amb">${zl(c.remAmt)}</span></div>
-      ${c.bal!=null?`<div class="row"><span class="k">Kapitał pozostały ≈</span><span class="v">${zl(c.bal)}</span></div>`:''}
-      ${c.interest!=null?`<div class="row tot"><span class="k">Całkowity koszt odsetek</span><span class="v">${zl(c.interest)}</span></div>`:''}`}
+      <div class="row"><span class="k">Spłacony kapitał</span><span class="v ok">${zl(c.capPaid)} · ${f1(Math.round(c.pct*10)/10)}%</span></div>
+      <div class="row"><span class="k">Kapitał do spłaty${c.hasOwed?' (wg banku)':' ≈'}</span><span class="v amb">${zl(c.bal)}</span></div>
+      <div class="row"><span class="k">Raty do końca (z odsetkami)</span><span class="v">${zl(c.remPay)}</span></div>
+      <div class="row tot"><span class="k">Koszt odsetek i opłat${c.pEst?' ≈':''}</span><span class="v">${zl(c.interest)}</span></div>
+      ${c.owedHigh?'<p class="hint-inline" style="color:var(--red)">⚠️ Kwota z banku jest większa niż kwota umowy — wpisz sam kapitał do spłaty (bez przyszłych odsetek).</p>':''}`}
   ['#xP','#xDn','#xR','#xRv','#xI','#xOw','#xPd'].forEach(s=>$(s).addEventListener('input',pv));
   pv();
   $('#mSave').onclick=()=>{const x=read();if(!x.name){toast('Podaj nazwę',1);return}if(!hasPd()){toast('Podaj ile rat już spłaciłeś (0 dla nowej umowy)',1);return}if(!x.end){toast('Wybierz dzień, miesiąc i rok ostatniej raty',1);return}if(N()<1){toast('Ostatnia rata już minęła — wpisz liczbę spłaconych rat',1);return}

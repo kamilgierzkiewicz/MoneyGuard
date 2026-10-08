@@ -1,5 +1,5 @@
 /* MoneyGuard — service worker: network-first, offline z cache */
-const CACHE = 'moneyguard-2026-10-08g';
+const CACHE = 'moneyguard-2026-10-08h';
 const ASSETS = ['./MoneyGuard.html', './manifest.json', './MoneyGuard-192.png', './MoneyGuard-512.png', './MoneyGuard-apple-touch.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
